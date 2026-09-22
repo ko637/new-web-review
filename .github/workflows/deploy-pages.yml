@@ -1,0 +1,52 @@
+name: Deploy Unity WebGL to Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "15669768018833-new-default-webgl-4.zip"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract Unity WebGL build
+        run: |
+          rm -rf _site extracted
+          mkdir -p _site extracted
+          unzip -q "15669768018833-new-default-webgl-4.zip" -d extracted
+          cp -a "extracted/Default WebGL/." _site/
+          touch _site/.nojekyll
+          test -f _site/index.html
+          test -f "_site/Build/Default WebGL.loader.js"
+          test -f "_site/Build/Default WebGL.wasm"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
