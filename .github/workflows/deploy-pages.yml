@@ -75,6 +75,30 @@ jobs:
             perl -0pi -e 's/window\.addEventListener\("error"/const originalConsoleError=console.error.bind(console); console.error=function(){ originalConsoleError.apply(console,arguments); mark("CONSOLE ERROR: "+Array.from(arguments).map(text).join(" "),"err"); }; const originalConsoleWarn=console.warn.bind(console); console.warn=function(){ originalConsoleWarn.apply(console,arguments); mark("CONSOLE WARN: "+Array.from(arguments).map(text).join(" "),"warn"); }; window.addEventListener("error"/' _site/index.html
           fi
 
+          if ! grep -q 'DOM TOUCH OK' _site/index.html; then
+            python3 - <<'PY'
+          from pathlib import Path
+          p=Path("_site/index.html")
+          s=p.read_text()
+          needle='      const canvas=document.getElementById("unity-canvas");'
+          inject='''      const canvas=document.getElementById("unity-canvas");
+      (function(){
+        function focusCanvas(){ try{ canvas.focus({preventScroll:true}); }catch(_){ try{canvas.focus();}catch(__){} } }
+        canvas.addEventListener("pointerdown",function(){ focusCanvas(); },{capture:true});
+        canvas.addEventListener("touchstart",function(e){
+          focusCanvas();
+          if(e.cancelable) e.preventDefault();
+          const t=e.touches&&e.touches.length?e.touches[0]:null;
+          mark("DOM TOUCH OK"+(t?" "+Math.round(t.clientX)+","+Math.round(t.clientY):""),"warn");
+        },{passive:false,capture:true});
+        canvas.addEventListener("touchmove",function(e){ if(e.cancelable) e.preventDefault(); },{passive:false,capture:true});
+      })();'''
+          if needle not in s:
+              raise SystemExit("canvas injection point not found")
+          p.write_text(s.replace(needle,inject,1))
+          PY
+          fi
+
           touch _site/.nojekyll
           test -f _site/index.html
           find _site/Build -type f -name '*.loader.js' -print -quit | grep -q .
