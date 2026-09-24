@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - "unity-share-id.txt"
       - "*-default-webgl-*.zip"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
@@ -28,14 +29,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select latest Unity WebGL build
+      - name: Acquire Unity WebGL build
         id: build
         run: |
           set -euo pipefail
-          ZIP="$(ls -1v *-default-webgl-*.zip | tail -n1)"
-          test -n "$ZIP"
-          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
-          echo "Using $ZIP"
+          if [ -s unity-share-id.txt ]; then
+            SHARE_ID="$(tr -d '\r\n ' < unity-share-id.txt)"
+            test -n "$SHARE_ID"
+            curl -fsS --retry 3               "https://build-automation.services.api.unity.com/v2/shares/$SHARE_ID"               -o share.json
+
+            STATUS="$(jq -r '.buildStatus' share.json)"
+            BUILD_NO="$(jq -r '.build' share.json)"
+            BRANCH="$(jq -r '.scmBranch' share.json)"
+            REVISION="$(jq -r '.requestedRevision // .lastBuiltRevision' share.json)"
+            DOWNLOAD_URL="$(jq -r '.links.download_primary.href' share.json)"
+
+            test "$STATUS" = "success"
+            test "$BRANCH" = "review-web"
+            test -n "$DOWNLOAD_URL"
+            test "$DOWNLOAD_URL" != "null"
+
+            echo "Unity build #$BUILD_NO branch=$BRANCH revision=$REVISION"
+            curl -fL --retry 3 --retry-all-errors "$DOWNLOAD_URL" -o unity-build.zip
+            test -s unity-build.zip
+            echo "zip=unity-build.zip" >> "$GITHUB_OUTPUT"
+          else
+            ZIP="$(ls -1v *-default-webgl-*.zip | tail -n1)"
+            test -n "$ZIP"
+            echo "Using uploaded $ZIP"
+            echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Extract Unity WebGL build
         run: |
@@ -47,8 +70,11 @@ jobs:
           test -n "$INDEX"
           SITE_ROOT="$(dirname "$INDEX")"
           cp -a "$SITE_ROOT/." _site/
-          perl -0pi -e 's/window\.addEventListener\("error"/const originalConsoleError=console.error.bind(console); console.error=function(){ originalConsoleError.apply(console,arguments); mark("CONSOLE ERROR: "+Array.from(arguments).map(text).join(" "),"err"); }; const originalConsoleWarn=console.warn.bind(console); console.warn=function(){ originalConsoleWarn.apply(console,arguments); mark("CONSOLE WARN: "+Array.from(arguments).map(text).join(" "),"warn"); }; window.addEventListener("error"/' _site/index.html
-          grep -q "CONSOLE ERROR:" _site/index.html
+
+          if grep -q 'window.addEventListener("error"' _site/index.html && ! grep -q 'CONSOLE ERROR:' _site/index.html; then
+            perl -0pi -e 's/window\.addEventListener\("error"/const originalConsoleError=console.error.bind(console); console.error=function(){ originalConsoleError.apply(console,arguments); mark("CONSOLE ERROR: "+Array.from(arguments).map(text).join(" "),"err"); }; const originalConsoleWarn=console.warn.bind(console); console.warn=function(){ originalConsoleWarn.apply(console,arguments); mark("CONSOLE WARN: "+Array.from(arguments).map(text).join(" "),"warn"); }; window.addEventListener("error"/' _site/index.html
+          fi
+
           touch _site/.nojekyll
           test -f _site/index.html
           find _site/Build -type f -name '*.loader.js' -print -quit | grep -q .
