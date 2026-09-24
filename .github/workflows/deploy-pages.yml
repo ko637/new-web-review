@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "15669768018833-new-default-webgl-4.zip"
+      - "*-default-webgl-*.zip"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -28,16 +28,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Select latest Unity WebGL build
+        id: build
+        run: |
+          set -euo pipefail
+          ZIP="$(find . -maxdepth 1 -type f -name '*-default-webgl-*.zip' -printf '%f\n' | sort -V | tail -n1)"
+          test -n "$ZIP"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "Using $ZIP"
+
       - name: Extract Unity WebGL build
         run: |
+          set -euo pipefail
           rm -rf _site extracted
           mkdir -p _site extracted
-          unzip -q "15669768018833-new-default-webgl-4.zip" -d extracted
-          cp -a "extracted/Default WebGL/." _site/
+          unzip -q "${{ steps.build.outputs.zip }}" -d extracted
+          INDEX="$(find extracted -type f -name index.html -print -quit)"
+          test -n "$INDEX"
+          SITE_ROOT="$(dirname "$INDEX")"
+          cp -a "$SITE_ROOT/." _site/
           touch _site/.nojekyll
           test -f _site/index.html
-          test -f "_site/Build/Default WebGL.loader.js"
-          test -f "_site/Build/Default WebGL.wasm"
+          find _site/Build -type f -name '*.loader.js' -print -quit | grep -q .
+          find _site/Build -type f -name '*.wasm' -print -quit | grep -q .
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
