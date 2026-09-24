@@ -76,27 +76,7 @@ jobs:
           fi
 
           if ! grep -q 'DOM TOUCH OK' _site/index.html; then
-            python3 - <<'PY'
-          from pathlib import Path
-          p=Path("_site/index.html")
-          s=p.read_text()
-          needle='      const canvas=document.getElementById("unity-canvas");'
-          inject='''      const canvas=document.getElementById("unity-canvas");
-      (function(){
-        function focusCanvas(){ try{ canvas.focus({preventScroll:true}); }catch(_){ try{canvas.focus();}catch(__){} } }
-        canvas.addEventListener("pointerdown",function(){ focusCanvas(); },{capture:true});
-        canvas.addEventListener("touchstart",function(e){
-          focusCanvas();
-          if(e.cancelable) e.preventDefault();
-          const t=e.touches&&e.touches.length?e.touches[0]:null;
-          mark("DOM TOUCH OK"+(t?" "+Math.round(t.clientX)+","+Math.round(t.clientY):""),"warn");
-        },{passive:false,capture:true});
-        canvas.addEventListener("touchmove",function(e){ if(e.cancelable) e.preventDefault(); },{passive:false,capture:true});
-      })();'''
-          if needle not in s:
-              raise SystemExit("canvas injection point not found")
-          p.write_text(s.replace(needle,inject,1))
-          PY
+            perl -0pi -e 's/const canvas=document\.getElementById\("unity-canvas"\);/const canvas=document.getElementById("unity-canvas"); canvas.addEventListener("pointerdown",function(){try{canvas.focus({preventScroll:true});}catch(_){try{canvas.focus();}catch(__){}}},{capture:true}); canvas.addEventListener("touchstart",function(e){try{canvas.focus({preventScroll:true});}catch(_){try{canvas.focus();}catch(__){}} if(e.cancelable)e.preventDefault(); const t=e.touches&&e.touches.length?e.touches[0]:null; mark("DOM TOUCH OK"+(t?" "+Math.round(t.clientX)+","+Math.round(t.clientY):""),"warn");},{passive:false,capture:true}); canvas.addEventListener("touchmove",function(e){if(e.cancelable)e.preventDefault();},{passive:false,capture:true});/' _site/index.html
           fi
 
           touch _site/.nojekyll
